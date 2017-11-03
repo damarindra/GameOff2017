@@ -1,0 +1,143 @@
+[gd_scene load_steps=9 format=2]
+
+[ext_resource path="res://Scripts/player.gd" type="Script" id=1]
+[ext_resource path="res://complete.png" type="Texture" id=2]
+[ext_resource path="res://Scripts/wall_slide.gd" type="Script" id=3]
+
+[sub_resource type="Animation" id=2]
+
+resource_name = "idle"
+length = 1.2
+loop = true
+step = 0.3
+tracks/0/type = "value"
+tracks/0/path = NodePath("Sprite:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/imported = false
+tracks/0/keys = {
+"times": PoolRealArray( 0, 0.3, 0.6, 0.9 ),
+"transitions": PoolRealArray( 1, 1, 1, 1 ),
+"update": 1,
+"values": [ 1, 2, 3, 4 ]
+}
+
+[sub_resource type="Animation" id=4]
+
+resource_name = "jump"
+length = 1.0
+loop = false
+step = 0.1
+tracks/0/type = "value"
+tracks/0/path = NodePath("Sprite:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/imported = false
+tracks/0/keys = {
+"times": PoolRealArray( 0 ),
+"transitions": PoolRealArray( 1 ),
+"update": 1,
+"values": [ 8 ]
+}
+
+[sub_resource type="Animation" id=3]
+
+resource_name = "move"
+length = 0.6
+loop = true
+step = 0.1
+tracks/0/type = "value"
+tracks/0/path = NodePath("Sprite:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/imported = false
+tracks/0/keys = {
+"times": PoolRealArray( 0, 0.1, 0.2, 0.3, 0.4, 0.5 ),
+"transitions": PoolRealArray( 1, 1, 1, 1, 1, 1 ),
+"update": 1,
+"values": [ 5, 6, 7, 8, 9, 10 ]
+}
+
+[sub_resource type="RectangleShape2D" id=1]
+
+custom_solver_bias = 0.0
+extents = Vector2( 16, 24 )
+
+[sub_resource type="RectangleShape2D" id=5]
+
+custom_solver_bias = 0.0
+extents = Vector2( 344, 10 )
+
+[node name="Node" type="Node"]
+
+[node name="KinematicBody2D" type="KinematicBody2D" parent="."]
+
+position = Vector2( 424, 424 )
+input_pickable = false
+collision_layer = 1
+collision_mask = 1
+collision/safe_margin = 0.08
+script = ExtResource( 1 )
+SPRITE_PATH = NodePath("Sprite")
+ANIM_PATH = NodePath("AnimationPlayer")
+WALL_SLIDE_PATH = NodePath("WallSlide")
+FLOOR_ANGLE = 45.0
+GRAVITY = 10.0
+MOVE_SPEED = 5.0
+MOVE_TIME = 0.15
+STOP_TIME = 0.15
+MAX_JUMP_POWER = 5.0
+MIN_JUMP_POWER = 3.0
+MAX_AIR_JUMP = 1
+MAX_AIR_JUMP_POWER = 3.5
+MIN_AIR_JUMP_POWER = 1.0
+FLIP_COLLIDER_OFFSET = Vector2( 0, 0 )
+
+[node name="Sprite" type="Sprite" parent="KinematicBody2D"]
+
+texture = ExtResource( 2 )
+vframes = 3
+hframes = 5
+_sections_unfolded = [ "Animation", "Offset", "Region", "Transform" ]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="KinematicBody2D"]
+
+playback_process_mode = 1
+playback_default_blend_time = 0.0
+root_node = NodePath("..")
+anims/idle = SubResource( 2 )
+anims/jump = SubResource( 4 )
+anims/move = SubResource( 3 )
+playback/active = true
+playback/speed = 1.0
+blend_times = [  ]
+autoplay = "idle"
+
+[node name="WallSlide" type="Node" parent="KinematicBody2D"]
+
+script = ExtResource( 3 )
+WALL_SLIDE_SPEED = 1.0
+WALL_JUMP = true
+WALL_JUMP_POWER = Vector2( 3, -4 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="KinematicBody2D"]
+
+position = Vector2( 0, 8 )
+shape = SubResource( 1 )
+
+[node name="StaticBody2D" type="StaticBody2D" parent="."]
+
+input_pickable = false
+collision_layer = 1
+collision_mask = 1
+constant_linear_velocity = Vector2( 0, 0 )
+constant_angular_velocity = 0.0
+friction = 1.0
+bounce = 0.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
+
+position = Vector2( 416, 560 )
+shape = SubResource( 5 )
+
+
