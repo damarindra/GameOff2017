@@ -1,11 +1,14 @@
 extends KinematicBody2D
 
+export var pixel_perfect_on_2d = true
 export(NodePath) var SPRITE_PATH
-onready var SPRITE = get_node(SPRITE_PATH)
+var SPRITE
 export(NodePath) var ANIM_PATH
-onready var ANIM = get_node(ANIM_PATH)
+var ANIM
 export(NodePath) var WALL_SLIDE_PATH
 var WALL_SLIDE
+export(NodePath) var GUN_PATH
+var GUN
 export var FLOOR_ANGLE = 45.0
 export var GRAVITY = 10.0
 export var MOVE_SPEED = 3.0
@@ -18,10 +21,11 @@ export var MAX_AIR_JUMP_POWER = 3.5
 export var MIN_AIR_JUMP_POWER = 1.0
 export var FLIP_COLLIDER_OFFSET = Vector2(0,0)
 
-onready var move_step = MOVE_SPEED / MOVE_TIME
-onready var stop_step = MOVE_SPEED / STOP_TIME
 onready var collider = shape_owner_get_owner(0)
 onready var collider_origin_position = shape_owner_get_owner(0).position
+
+var move_step = 0
+var stop_step = 0
 
 var face_direction = 0
 var is_grounded = false
@@ -52,18 +56,34 @@ var bounce_count = 2
 #always revert the motion by position -= kinematic_col.travel
 var ground_check_length = 2
 
+func setup_scale():
+	GRAVITY *= get_node("/root/Singleton").WORLD.SCALE
+	MOVE_SPEED *= get_node("/root/Singleton").WORLD.SCALE
+	MAX_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
+	MIN_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
+	MAX_AIR_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
+	MIN_AIR_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
+	FLIP_COLLIDER_OFFSET *= get_node("/root/Singleton").WORLD.SCALE
+
 #onready var raycast_left = RayCast2D.new()
 #onready var raycast_right = RayCast2D.new()
 #
 func _ready():
+#	setup_scale()
+	
 	if WALL_SLIDE_PATH != null:
 		WALL_SLIDE = get_node(WALL_SLIDE_PATH)
-#	add_child(raycast_left)
-#	add_child(raycast_right)
-#	raycast_left.global_position = get_center_position() + (Vector2(-1 , 1) * get_shape_size()) + Vector2(get_safe_margin(), -get_safe_margin())
-#	raycast_right.global_position = get_center_position() + (Vector2(1, 1) * get_shape_size()) + Vector2(-get_safe_margin(), -get_safe_margin())
-#	raycast_left.enabled = true
-#	raycast_right.enabled = true
+	if SPRITE_PATH != null:
+		SPRITE = get_node(SPRITE_PATH)
+	if ANIM_PATH != null:
+		ANIM = get_node(ANIM_PATH)
+	if GUN_PATH != null:
+		GUN = get_node(GUN_PATH)
+	
+	if MOVE_TIME != 0:
+		move_step = MOVE_SPEED / MOVE_TIME
+	if STOP_TIME != 0:
+		stop_step = MOVE_SPEED / STOP_TIME
 
 func move():
 	#reset
@@ -92,7 +112,7 @@ func move():
 			check_ground_vel = velocity.y
 		# IMPORTANT!!! : when move_and_collide with Vector2(0, check_ground_vel), the result travel x is not zero, this is weird, don't know bug or not.
 		var kinematic_col_slope = move_and_collide(Vector2(0, check_ground_vel))
-		
+
 		if kinematic_col_slope:
 			position.x -= kinematic_col_slope.travel.x
 			var rotation_angle = sign(velocity.x) * 90
@@ -119,6 +139,7 @@ func move():
 	for i in range(bounce_count):
 		#collision handle
 		if kinematic_col:
+#			print(kinematic_col.collider)
 			
 			var remain = kinematic_col.remainder
 			var move_remainder = true
@@ -169,6 +190,9 @@ func move():
 	
 	jump_movement()
 	
+	if pixel_perfect_on_2d and not get_node("/root/Singleton").pixel_perfect:
+		forcing_pixel_perfect()
+	
 	if velocity.x != 0:
 		face_direction = sign(velocity.x)
 
@@ -177,16 +201,25 @@ func horizontal_movement():
 	var vel_x = velocity.x
 	
 	if horizontal_input.axis == 1:
-		vel_x += move_step * delta
+		if MOVE_TIME == 0:
+			vel_x = MOVE_SPEED
+		else:
+			vel_x += move_step * delta
 		if vel_x > MOVE_SPEED:
 			vel_x = MOVE_SPEED
 	elif horizontal_input.axis == -1:
-		vel_x -= move_step * delta
+		if MOVE_TIME == 0:
+			vel_x = -MOVE_SPEED
+		else:
+			vel_x -= move_step * delta
 		if vel_x < -MOVE_SPEED:
 			vel_x = -MOVE_SPEED
 	elif vel_x != 0:
 		var stop_dir = sign(vel_x) * -1
-		vel_x += stop_dir * stop_step * delta
+		if STOP_TIME == 0:
+			vel_x = 0
+		else:
+			vel_x += stop_dir * stop_step * delta
 		if sign(vel_x) == stop_dir:
 			vel_x = 0
 	
@@ -254,11 +287,28 @@ func play_animation():
 		next_anim = "move"
 	elif velocity.y > 0 and is_wall_sliding():
 		next_anim = "WallSlide"
-	elif not is_grounded:
+	elif not is_grounded and velocity.y < 0:
 		next_anim = "jump"
+	elif not is_grounded and velocity.y >= 0:
+		next_anim = "fall"
+
+	if GUN:
+		if GUN.is_shooting:
+			next_anim = "shoot_" + next_anim
 
 	if ANIM.get_current_animation() != next_anim:
+		var start_at = 0
+		if next_anim.find("shoot_") != -1:
+			start_at = ANIM.get_position()
+		elif ANIM.get_current_animation().find(next_anim) != -1:
+			start_at = ANIM.get_position()
 		ANIM.play(next_anim)
+		if start_at != 0:
+			ANIM.seek(start_at, true)
+
+func forcing_pixel_perfect():
+	if horizontal_input.axis == 0 and velocity.x == 0 and position.x != round(position.x):
+		position.x = round(position.x)
 
 func get_is_jumping():
 	return is_jumping and not is_grounded

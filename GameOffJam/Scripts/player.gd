@@ -7,6 +7,12 @@ func _ready():
 	set_physics_process(true)
 
 func _physics_process(delta):
+#	if $"..".is_rewind:
+#		ANIM.stop()
+#		return
+#	if ANIM.is_playing() == false:
+#		ANIM.play("idle")
+	
 	horizontal_input.update()
 	
 	jump_just_pressed = Input.is_action_just_pressed("jump")
@@ -14,3 +20,5 @@ func _physics_process(delta):
 	
 	move()
 	play_animation()
+	
+	
