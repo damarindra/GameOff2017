@@ -11,7 +11,7 @@ config_version=3
 [application]
 
 config/name="GameOffJam"
-run/main_scene="res://Scenes/World.tscn"
+run/main_scene="res://Scenes/StartScreen.tscn"
 config/icon="res://icon.png"
 
 [autoload]
@@ -57,4 +57,5 @@ rewind=[ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":""
 [rendering]
 
 quality/2d/use_pixel_snap=true
+environment/default_clear_color=Color( 0.152824, 0.442745, 0.58, 1 )
 environment/default_environment="res://default_env.tres"

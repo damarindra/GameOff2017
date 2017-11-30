@@ -1,6 +1,9 @@
 extends KinematicBody2D
 
 export var pixel_perfect_on_2d = true
+export var MAX_HEALTH = 10
+export var INVISIBLE_TIME = 1.0
+export var FREEZE_TIME = .3
 export(NodePath) var SPRITE_PATH
 var SPRITE
 export(NodePath) var ANIM_PATH
@@ -23,6 +26,12 @@ export var FLIP_COLLIDER_OFFSET = Vector2(0,0)
 
 onready var collider = shape_owner_get_owner(0)
 onready var collider_origin_position = shape_owner_get_owner(0).position
+onready var current_health = MAX_HEALTH
+
+var is_invisible = false
+var is_freezing = false
+var flicker_timer_counter = 0
+var flicker_gap_time = .08
 
 var move_step = 0
 var stop_step = 0
@@ -39,6 +48,7 @@ var last_ground_normal = Vector2(0,0)
 var last_wall_normal = Vector2(0,0)
 var last_ceil_normal = Vector2(0,0)
 var last_moving_platform = null
+var contact_collisions = []
 
 #input
 var horizontal_input = InputAxis.new("", "")
@@ -55,21 +65,14 @@ var bounce_count = 2
 #and if get the moving platform, then add the velocity of moving platform
 #always revert the motion by position -= kinematic_col.travel
 var ground_check_length = 2
+var _collision_mask_bit = []
+var _collision_layer_bit = []
 
-func setup_scale():
-	GRAVITY *= get_node("/root/Singleton").WORLD.SCALE
-	MOVE_SPEED *= get_node("/root/Singleton").WORLD.SCALE
-	MAX_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
-	MIN_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
-	MAX_AIR_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
-	MIN_AIR_JUMP_POWER *= get_node("/root/Singleton").WORLD.SCALE
-	FLIP_COLLIDER_OFFSET *= get_node("/root/Singleton").WORLD.SCALE
 
 #onready var raycast_left = RayCast2D.new()
 #onready var raycast_right = RayCast2D.new()
 #
 func _ready():
-#	setup_scale()
 	
 	if WALL_SLIDE_PATH != null:
 		WALL_SLIDE = get_node(WALL_SLIDE_PATH)
@@ -85,7 +88,17 @@ func _ready():
 	if STOP_TIME != 0:
 		stop_step = MOVE_SPEED / STOP_TIME
 
+func _physics_process(delta):
+	if is_invisible:
+		flicker_timer_counter += delta
+		if flicker_timer_counter >= flicker_gap_time:
+			visible = !visible
+			flicker_timer_counter -= flicker_gap_time
+	elif not visible:
+		visible = true
+
 func move():
+	contact_collisions.clear()
 	#reset
 	if is_jumping and is_grounded:
 		is_jumping = false
@@ -114,6 +127,7 @@ func move():
 		var kinematic_col_slope = move_and_collide(Vector2(0, check_ground_vel))
 
 		if kinematic_col_slope:
+			add_to_contact_collision(kinematic_col_slope.collider)
 			position.x -= kinematic_col_slope.travel.x
 			var rotation_angle = sign(velocity.x) * 90
 			var vel_dir = kinematic_col_slope.normal.rotated(deg2rad(rotation_angle)).normalized() * abs(velocity.x)
@@ -139,7 +153,7 @@ func move():
 	for i in range(bounce_count):
 		#collision handle
 		if kinematic_col:
-#			print(kinematic_col.collider)
+			add_to_contact_collision(kinematic_col.collider)
 			
 			var remain = kinematic_col.remainder
 			var move_remainder = true
@@ -200,14 +214,14 @@ func horizontal_movement():
 	var delta = get_physics_process_delta_time()
 	var vel_x = velocity.x
 	
-	if horizontal_input.axis == 1:
+	if horizontal_input.axis == 1 and not is_freezing:
 		if MOVE_TIME == 0:
 			vel_x = MOVE_SPEED
 		else:
 			vel_x += move_step * delta
 		if vel_x > MOVE_SPEED:
 			vel_x = MOVE_SPEED
-	elif horizontal_input.axis == -1:
+	elif horizontal_input.axis == -1 and not is_freezing:
 		if MOVE_TIME == 0:
 			vel_x = -MOVE_SPEED
 		else:
@@ -215,15 +229,21 @@ func horizontal_movement():
 		if vel_x < -MOVE_SPEED:
 			vel_x = -MOVE_SPEED
 	elif vel_x != 0:
-		var stop_dir = sign(vel_x) * -1
-		if STOP_TIME == 0:
-			vel_x = 0
-		else:
-			vel_x += stop_dir * stop_step * delta
-		if sign(vel_x) == stop_dir:
-			vel_x = 0
+		vel_x = stop()
 	
 	velocity.x = vel_x
+
+func stop():
+	
+	var stop_dir = sign(velocity.x) * -1
+	if STOP_TIME == 0:
+		velocity.x = 0
+	else:
+		velocity.x += stop_dir * stop_step * get_physics_process_delta_time()
+	if sign(velocity.x) == stop_dir:
+		velocity.x = 0
+	
+	return velocity.x
 
 #all kind of jump movement
 #included unique jump such a wall jump
@@ -274,6 +294,37 @@ func move_floor_velocity():
 		position -= Vector2(0, ground_check_length)
 	
 
+func take_damage(damage, impact):
+	if is_invisible:
+		return false
+	
+	is_invisible = true
+	is_freezing = true
+	var timer = get_tree().create_timer(INVISIBLE_TIME)
+	timer.connect("timeout", self, "disable_invisibility")
+	timer = get_tree().create_timer(FREEZE_TIME)
+	timer.connect("timeout", self, "disable_freezing")
+	
+	velocity = impact
+	
+	current_health -= damage
+	if current_health <= 0:
+		current_health = 0
+		die()
+	
+	return true
+
+func die():
+	visible = false
+	set_physics_process(false)
+	ANIM.stop()
+
+	for l in _collision_layer_bit:
+		set_collision_layer_bit(l, false)
+	
+	for m in _collision_mask_bit:
+		set_collision_mask_bit(m, false)
+
 func play_animation():
 	if velocity.x != 0:
 		SPRITE.flip_h = face_direction == -1
@@ -306,6 +357,16 @@ func play_animation():
 		if start_at != 0:
 			ANIM.seek(start_at, true)
 
+func add_to_contact_collision(collision):
+	if not contact_collisions.has(collision):
+		contact_collisions.push_back(collision)
+
+func disable_invisibility():
+	is_invisible = false
+
+func disable_freezing():
+	is_freezing = false
+
 func forcing_pixel_perfect():
 	if horizontal_input.axis == 0 and velocity.x == 0 and position.x != round(position.x):
 		position.x = round(position.x)
@@ -334,12 +395,12 @@ func is_on_falling_slope_angle():
 func get_shape_collision():
 	return shape_owner_get_shape(0,0)
 
-#func get_shape_size():
-#	if get_shape_collision().is_class("RectangleShape2D"):
-#		return get_shape_collision().extents * 2
-#	elif get_shape_collision().is_class("CapsuleShape2D"):
-#		return Vector2()
-#	return Vector2()
+func set_layer_and_mask_backup():
+	for i in range(20):
+		if get_collision_layer_bit(i):
+			_collision_layer_bit.push_back(i)
+		if get_collision_mask_bit(i):
+			_collision_mask_bit.push_back(i)
 
 class InputAxis:
 	var axis = 0
@@ -357,3 +418,4 @@ class InputAxis:
 			axis = -1
 		else:
 			axis = 0
+
